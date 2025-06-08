@@ -1,76 +1,81 @@
 import json
 import logging
 from flask import Flask, request, jsonify
-from nacl.signing import VerifyKey
-from nacl.exceptions import BadSignatureError
+from nacl.public import PrivateKey, Box
+from nacl.signing import SigningKey, VerifyKey
+from nacl.exceptions import BadSignatureError, CryptoError
 
-# Import the merge logic from our database module
 from models.database import merge_records
+from config import PRIVATE_KEY_PATH, PUBLIC_KEY_PATH
 
-# This quiets the default Flask server logging to keep our console clean
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
-# Create the Flask application instance
 app = Flask(__name__)
-
-
-# --- Define Server Endpoints ---
 
 @app.route('/sync', methods=['POST'])
 def sync():
     """
-    This endpoint receives a sync payload from another peer. It is responsible for:
-    1. Verifying the cryptographic signature to ensure the request is authentic.
-    2. Passing the verified data to the merge logic to be saved.
-    3. Returning a summary of the operation to the peer.
+    Receives an encrypted sync payload, decrypts it, verifies the signature,
+    and merges the data.
     """
-    payload = request.get_json()
+    # Get the raw encrypted bytes from the request
+    encrypted_payload = request.get_data()
     
-    # Separate the data, signature, and public key from the incoming payload
+    # 1. Decrypt the payload
+    try:
+        print("\n--- [/sync] Received encrypted payload, attempting decryption... ---")
+        # Load our own private key for decryption
+        with open(PRIVATE_KEY_PATH, "rb") as f:
+            server_signing_key = SigningKey(f.read())
+        server_private_key = server_signing_key.to_curve25519_private_key()
+        
+        # For the demo, we assume we know the sender's public key (our own)
+        with open(PUBLIC_KEY_PATH, "rb") as f:
+            sender_public_key_bytes = f.read()
+        sender_encryption_public_key = VerifyKey(sender_public_key_bytes).to_curve25519_public_key()
+
+        # Create the Box to decrypt the message
+        box = Box(server_private_key, sender_encryption_public_key)
+        
+        # The decrypt() method will raise CryptoError if decryption fails
+        decrypted_payload_json = box.decrypt(encrypted_payload)
+        payload = json.loads(decrypted_payload_json)
+        print("Decryption successful.")
+
+    except (CryptoError, json.JSONDecodeError, IOError):
+        print("--- [/sync] DECRYPTION FAILED. Rejecting request. ---")
+        return jsonify({"status": "error", "message": "Decryption failed or invalid payload"}), 403
+
+    # 2. Verify the signature (on the now-decrypted payload)
     data = payload.get('data')
     signature_hex = payload.get('signature')
     public_key_hex = payload.get('public_key')
     
-    # 1. Verify the signature
     try:
-        # Recreate the peer's VerifyKey from their hex-encoded public key
         verify_key = VerifyKey(bytes.fromhex(public_key_hex))
-        
-        # Re-serialize the data exactly as the client did to prepare for verification
         data_json = json.dumps(data, separators=(',', ':')).encode('utf-8')
-        
-        # The verify() method cryptographically checks the signature.
-        # It will raise a BadSignatureError if the signature does not match the data.
         verify_key.verify(data_json, bytes.fromhex(signature_hex))
-        
-        print("\n--- [/sync] Signature VERIFIED. Request is authentic. ---")
-        
+        print("--- [/sync] Signature VERIFIED. Request is authentic. ---")
     except (BadSignatureError, TypeError, KeyError, ValueError):
-        # If signature is bad, or the payload is malformed/missing keys, reject it.
-        print("\n--- [/sync] Signature INVALID. Rejecting request. ---")
-        return jsonify({"status": "error", "message": "Invalid signature or malformed payload"}), 403
+        print("--- [/sync] Signature INVALID. Rejecting request. ---")
+        return jsonify({"status": "error", "message": "Invalid signature"}), 403
 
-    # 2. If verification passes, process the data using the merge function
+    # 3. If verification passes, process the data using the merge function
     records_to_merge = data.get('records', [])
     print(f"Received {len(records_to_merge)} records to merge.")
-    
     merge_summary = merge_records(records_to_merge)
-    
     print("----------------------------------------------------\n")
     
-    # 3. Return a success response including the summary of the merge operation
     return jsonify({
         "status": "success", 
-        "message": "Data received and verified",
+        "message": "Data decrypted, verified, and merged",
         "summary": merge_summary
     }), 200
-
 
 def run_server():
     """
     Runs the Flask server on a local-only address.
     """
     print("Starting local P2P server on http://127.0.0.1:5000...")
-    # debug=False is important for stability and performance
     app.run(host='127.0.0.1', port=5000, debug=False)
