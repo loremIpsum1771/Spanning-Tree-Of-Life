@@ -1,25 +1,20 @@
+# ... (imports are unchanged) ...
+from models.database import initialize_database, setup_demo_data
+from utils.crypto import generate_and_store_keys
+from core.models import User
+from core.server import run_server
+from core.p2p import initiate_sync
 import os
 import time
 import threading
 
-from models.database import initialize_database, get_db_connection, setup_demo_data
-from utils.crypto import generate_and_store_keys
-from core.models import User
-from core.server import run_server
-from core.p2p import initiate_sync # Import our new sync function
-from config import (
-    ACL_DIR, CONFIG_DIR, DATA_DIR, KEYS_DIR, 
-    MODELS_DIR, CORE_DIR, UTILS_DIR
-)
-
-
 def initialize_environment():
-    # ... (no changes) ...
+    # ... (This function is unchanged) ...
     print("--- Initializing Environment ---")
-    for dir_path in [ACL_DIR, CONFIG_DIR, DATA_DIR, KEYS_DIR, MODELS_DIR, CORE_DIR, UTILS_DIR]:
-        dir_path.mkdir(exist_ok=True)
+    for dir_path in [os.path.join(os.getcwd(), d) for d in ["acl", "config", "data", "keys", "models", "core", "utils"]]:
+        os.makedirs(dir_path, exist_ok=True)
     if os.name != 'nt':
-        os.chmod(KEYS_DIR, 0o700)
+        os.chmod(os.path.join(os.getcwd(), "keys"), 0o700)
     generate_and_store_keys()
     initialize_database()
     print("\n--- Environment check complete ---")
@@ -27,29 +22,30 @@ def initialize_environment():
 
 def run_app():
     """
-    Starts the P2P server and demonstrates a self-sync loop.
+    Demonstrates a secure sync with ACL filtering and signature verification.
     """
     print("\nWelcome to the Spanning Tree of Life Organizer System!")
-    setup_demo_data() # Ensure we have data to send
+    setup_demo_data()
     
-    # --- Start the P2P server in a background thread ---
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
-    time.sleep(1) # Give the server a moment to start up
+    time.sleep(1)
     
-    # --- DEMO: Initiate a sync with our own server ---
-    # This simulates a peer sending us their data.
+    # --- DEMO: A facilitator in NYC syncs with a municipal lead in NYC ---
+    # In our self-sync, these are the same person, but it demonstrates the logic.
+    
+    # The user initiating the sync
+    current_user = User(id=20, role='facilitator', region='nyc')
+    
+    # The user profile of the peer we are sending data to
+    peer_user = User(id=30, role='municipal', region='nyc')
+    
     local_server_address = "http://127.0.0.1:5000"
-    # We'll pretend to be a 'national' user for this demo sync
-    current_user = User(id=50, role='national', region=None)
     
-    initiate_sync(local_server_address, current_user)
+    # Initiate the sync, passing both user profiles
+    initiate_sync(local_server_address, current_user, peer_user)
     
-    # --- Keep the application running ---
-    print("\nMain application is running.")
-    print("The P2P server is listening in the background.")
-    print("Press Ctrl+C to exit.")
-    
+    print("\nMain application is running. Press Ctrl+C to exit.")
     try:
         while True:
             time.sleep(1)
