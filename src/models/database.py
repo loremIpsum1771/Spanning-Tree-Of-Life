@@ -52,3 +52,26 @@ def initialize_database():
         print(f"Database ready at: {DB_PATH}")
     except sqlite3.Error as e:
         print(f"Database error: {e}")
+
+# --- New Function ---
+def find_records(table_name: str, user: User) -> list:
+    """
+    Finds records from a table, automatically applying ACL filtering.
+    """
+    clause, params = get_acl_filter_clause(user)
+    
+    # It is generally safe to use f-string for table_name IF it's not from user input.
+    # In our app, we will control the table names passed to this function.
+    sql = f"SELECT * FROM {table_name} WHERE {clause}"
+    
+    print(f"\nExecuting query for user '{user.role}' in '{user.region}':")
+    print(f"SQL: {sql}")
+    print(f"Params: {params}")
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(sql, params)
+    results = cursor.fetchall()
+    conn.close()
+    
+    return [dict(row) for row in results] # Convert results to a list of dicts
