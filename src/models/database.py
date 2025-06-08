@@ -99,3 +99,59 @@ def setup_demo_data():
     conn.commit()
     conn.close()
     print("Demo data has been set up.")
+    
+# --- New Merge Function ---
+def merge_records(records: list) -> dict:
+    """
+    Merges a list of incoming records into the local database.
+    - Inserts new records.
+    - Updates existing records if the incoming one is newer.
+    - Skips existing records if the incoming one is older or the same.
+    """
+    summary = {'inserted': 0, 'updated': 0, 'skipped': 0}
+    
+    # For now, we only handle the 'meetings' table. A full implementation
+    # would check the record type and dispatch to the correct table handler.
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    for record in records:
+        record_id = record.get('id')
+        if not record_id:
+            continue
+
+        # Check if a record with this ID already exists
+        cursor.execute("SELECT last_modified FROM meetings WHERE id = ?", (record_id,))
+        local_record = cursor.fetchone()
+        
+        if local_record is None:
+            # Record does not exist locally, so insert it
+            print(f"Merging: Inserting new meeting with ID {record_id}.")
+            cursor.execute(
+                "INSERT INTO meetings (id, host_id, city, state, title, notes, last_modified) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (record_id, record.get('host_id'), record.get('city'), record.get('state'), record.get('title'), record.get('notes'), record.get('last_modified'))
+            )
+            summary['inserted'] += 1
+        else:
+            # Record exists, compare timestamps
+            local_timestamp = local_record['last_modified']
+            incoming_timestamp = record.get('last_modified')
+
+            if incoming_timestamp > local_timestamp:
+                # Incoming record is newer, so update
+                print(f"Merging: Updating existing meeting with ID {record_id}.")
+                cursor.execute(
+                    "UPDATE meetings SET host_id = ?, city = ?, state = ?, title = ?, notes = ?, last_modified = ? WHERE id = ?",
+                    (record.get('host_id'), record.get('city'), record.get('state'), record.get('title'), record.get('notes'), incoming_timestamp, record_id)
+                )
+                summary['updated'] += 1
+            else:
+                # Local record is same age or newer, so skip
+                print(f"Merging: Skipping meeting with ID {record_id} (local is newer).")
+                summary['skipped'] += 1
+
+    conn.commit()
+    conn.close()
+    
+    return summary
