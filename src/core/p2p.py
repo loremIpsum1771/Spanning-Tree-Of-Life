@@ -2,7 +2,8 @@ import json
 import requests
 import time
 from nacl.public import PrivateKey, Box
-from nacl.signing import SigningKey
+# The import is corrected on this line
+from nacl.signing import SigningKey, VerifyKey 
 from nacl.exceptions import CryptoError
 
 from acl.permissions import has_access
@@ -56,26 +57,21 @@ def initiate_sync(peer_address: str, current_user: User, peer_user: User):
             "public_key": public_key_hex
         }
         
-        # --- New Encryption Step ---
+        # --- Encryption Step ---
         print("Encrypting payload for secure transport...")
-        # A signing key can be converted into a key for encryption (Curve25519)
         encryption_private_key = signing_key.to_curve25519_private_key()
         
-        # For the demo, we use our own public key as the peer's public key
         with open(PUBLIC_KEY_PATH, "rb") as f:
             peer_public_key_bytes = f.read()
         
-        # The signing VerifyKey needs to be converted to an encryption PublicKey
+        # This line now works because VerifyKey is imported
         peer_encryption_public_key = VerifyKey(peer_public_key_bytes).to_curve25519_public_key()
         
-        # Create a "Box" for encryption
         box = Box(encryption_private_key, peer_encryption_public_key)
         
-        # The payload to encrypt is the JSON string of our final_payload dict
         final_payload_json = json.dumps(final_payload).encode('utf-8')
         
         encrypted_payload = box.encrypt(final_payload_json)
-        # --- End of Encryption Step ---
         
     except (IOError, CryptoError) as e:
         print(f"Error: Could not process keys for encryption/signing. {e}")
@@ -83,11 +79,10 @@ def initiate_sync(peer_address: str, current_user: User, peer_user: User):
 
     try:
         print("Sending encrypted payload to peer...")
-        # We now send the raw encrypted bytes, not JSON
         response = requests.post(
             f"{peer_address}/sync",
-            data=encrypted_payload, # Send raw bytes
-            headers={"Content-Type": "application/octet-stream"}, # Change content type
+            data=encrypted_payload,
+            headers={"Content-Type": "application/octet-stream"},
             timeout=10
         )
         
