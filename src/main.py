@@ -1,12 +1,12 @@
 import os
 import time
-import threading # Import the threading module
+import threading
 
-# --- Imports from our application modules ---
-from models.database import initialize_database, get_db_connection, find_records
+from models.database import initialize_database, get_db_connection, setup_demo_data
 from utils.crypto import generate_and_store_keys
 from core.models import User
-from core.server import run_server # Import our new server function
+from core.server import run_server
+from core.p2p import initiate_sync # Import our new sync function
 from config import (
     ACL_DIR, CONFIG_DIR, DATA_DIR, KEYS_DIR, 
     MODELS_DIR, CORE_DIR, UTILS_DIR
@@ -14,9 +14,7 @@ from config import (
 
 
 def initialize_environment():
-    """
-    Ensures all necessary directories exist and runs all setup functions.
-    """
+    # ... (no changes) ...
     print("--- Initializing Environment ---")
     for dir_path in [ACL_DIR, CONFIG_DIR, DATA_DIR, KEYS_DIR, MODELS_DIR, CORE_DIR, UTILS_DIR]:
         dir_path.mkdir(exist_ok=True)
@@ -29,21 +27,29 @@ def initialize_environment():
 
 def run_app():
     """
-    The main application logic.
-    Starts the P2P server and keeps the main application running.
+    Starts the P2P server and demonstrates a self-sync loop.
     """
     print("\nWelcome to the Spanning Tree of Life Organizer System!")
+    setup_demo_data() # Ensure we have data to send
     
     # --- Start the P2P server in a background thread ---
-    # A daemon thread will automatically exit when the main program finishes.
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
+    time.sleep(1) # Give the server a moment to start up
     
+    # --- DEMO: Initiate a sync with our own server ---
+    # This simulates a peer sending us their data.
+    local_server_address = "http://127.0.0.1:5000"
+    # We'll pretend to be a 'national' user for this demo sync
+    current_user = User(id=50, role='national', region=None)
+    
+    initiate_sync(local_server_address, current_user)
+    
+    # --- Keep the application running ---
     print("\nMain application is running.")
     print("The P2P server is listening in the background.")
     print("Press Ctrl+C to exit.")
     
-    # Keep the main thread alive to allow the background server to run
     try:
         while True:
             time.sleep(1)
@@ -51,7 +57,6 @@ def run_app():
         print("\nShutting down application.")
 
 
-# This is the main execution block
 if __name__ == "__main__":
     initialize_environment()
     run_app()
