@@ -1,5 +1,7 @@
 import sqlite3
 from config import DB_PATH
+from core.models import User
+from acl.permissions import get_acl_filter_clause
 
 def get_db_connection():
     # ... (no changes) ...
