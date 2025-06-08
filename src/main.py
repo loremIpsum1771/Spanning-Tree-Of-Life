@@ -1,62 +1,55 @@
-"""
-Main entry point and demo for Spanning Tree Database + ACL System
-"""
+import os
+from pathlib import Path
 
-from spanning_tree import SpanningTreeDB, DataManager, Role
+# --- Configuration: Define all application paths ---
 
+# Path.cwd() gets the current working directory, where you run the script from.
+# This makes the script portable.
+PROJECT_ROOT = Path.cwd()
 
-def create_test_data(db: SpanningTreeDB):
-    """Create some test data for development"""
-    dm = DataManager(db)
-    
-    # Create test users
-    admin_id = dm.create_user("admin@spanningtree.org", "admin_public_key", "dev", "National")
-    facilitator_id = dm.create_user("facilitator@test.com", "facilitator_public_key", "facilitator", "San Francisco")
-    shadower_id = dm.create_user("shadower@test.com", "shadower_public_key", "shadower", "San Francisco")
-    
-    # Create test meeting
-    admin = dm.get_user_by_email("admin@spanningtree.org")
-    meeting_id = dm.create_meeting(admin, {
-        'city': 'San Francisco',
-        'state': 'California', 
-        'scheduled_at': '2024-12-01 19:00:00',
-        'title': 'Monthly Organizing Meeting',
-        'notes': 'Discussion of local initiatives'
-    })
-    
-    print(f"Created test data - Admin: {admin_id}, Facilitator: {facilitator_id}, Meeting: {meeting_id}")
+# Define paths for all our specialized directories
+ACL_DIR = PROJECT_ROOT / "acl"
+CONFIG_DIR = PROJECT_ROOT / "config"
+DATA_DIR = PROJECT_ROOT / "data"
+KEYS_DIR = PROJECT_ROOT / "keys"
+MODELS_DIR = PROJECT_ROOT / "models"
+DB_PATH = DATA_DIR / "spanning_tree.db" # The path for the embedded SQLite database 
 
 
-def main():
-    """Demo usage of the system"""
-    print("Initializing Spanning Tree Database + ACL System...")
-    
-    # Initialize database
-    db = SpanningTreeDB()
-    dm = DataManager(db)
-    
-    # Create test data
-    create_test_data(db)
-    
-    # Test ACL functionality
-    admin = dm.get_user_by_email("admin@spanningtree.org")
-    facilitator = dm.get_user_by_email("facilitator@test.com")
-    shadower = dm.get_user_by_email("shadower@test.com")
-    
-    print(f"\nTesting ACL with different roles:")
-    print(f"Admin meetings: {len(dm.get_filtered_meetings(admin))}")
-    print(f"Facilitator meetings: {len(dm.get_filtered_meetings(facilitator))}")
-    print(f"Shadower meetings: {len(dm.get_filtered_meetings(shadower))}")
-    
-    # Test data export
-    export_data = dm.export_filtered_data(admin)
-    print(f"\nAdmin can export {sum(len(v) for v in export_data.values())} total records")
-    
-    export_data = dm.export_filtered_data(shadower)  
-    print(f"Shadower can export {sum(len(v) for v in export_data.values())} total records")
-    
-    print("\nDatabase + ACL system ready!")
+def initialize_environment():
+    """
+    Ensures all necessary directories exist and sets secure permissions for the keys directory.
+    This function makes the app robust and secure from the start.
+    """
+    print("Initializing environment...")
+
+    # Create all directories. `exist_ok=True` prevents errors if they already exist.
+    for dir_path in [ACL_DIR, CONFIG_DIR, DATA_DIR, KEYS_DIR, MODELS_DIR]:
+        dir_path.mkdir(exist_ok=True)
+        print(f"Directory ensured: {dir_path}")
+
+    # Set secure permissions on the keys directory to protect the user's private key.
+    # This is a critical security step from the design document. 
+    # In Python, 0o700 is the octal representation for rwx------ permissions.
+    if os.name != 'nt':  # os.name is 'posix' for Linux/macOS, 'nt' for Windows
+        try:
+            os.chmod(KEYS_DIR, 0o700)
+            print(f"Secure permissions (700) set for: {KEYS_DIR}")
+        except OSError as e:
+            print(f"Error setting permissions for {KEYS_DIR}: {e}")
+            print("Please ensure you have the necessary rights to change permissions.")
+
+    print("\nEnvironment check complete.")
+
+
+def run_app():
+    """
+    The main application logic will eventually go here.
+    """
+    print("\nWelcome to the Spanning Tree of Life Organizer System!")
+    # TODO: Future steps will add onboarding, UI, and the main application loop here.
 
 
 if __name__ == "__main__":
-    main()
+    initialize_environment()
+    run_app()
