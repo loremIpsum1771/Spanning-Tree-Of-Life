@@ -2,7 +2,7 @@ import sqlite3
 from config import DB_PATH
 
 def get_db_connection():
-    """Establishes and returns a connection to the SQLite database."""
+    # ... (no changes) ...
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
@@ -13,6 +13,8 @@ def initialize_database():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        
+        # ... (create_users_table and create_audit_log_table are unchanged) ...
         create_users_table = """
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, public_key TEXT NOT NULL,
@@ -26,8 +28,25 @@ def initialize_database():
             record_id INTEGER, entity TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, signature TEXT
         );
         """
+        
+        # --- New Table ---
+        # meetings table schema from the document 
+        create_meetings_table = """
+        CREATE TABLE IF NOT EXISTS meetings (
+            id INTEGER PRIMARY KEY,
+            host_id INTEGER REFERENCES users(id),
+            city TEXT,
+            state TEXT,
+            scheduled_at TIMESTAMP,
+            title TEXT,
+            notes TEXT
+        );
+        """
+
         cursor.execute(create_users_table)
         cursor.execute(create_audit_log_table)
+        cursor.execute(create_meetings_table) # Execute the new table creation
+        
         conn.commit()
         conn.close()
         print(f"Database ready at: {DB_PATH}")
