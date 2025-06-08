@@ -1,76 +1,97 @@
 import os
-# Import our refactored functions
+
+# --- Imports from our application modules ---
+
+# Imports the function to set up the database schema and a generic finder
+from models.database import initialize_database, get_db_connection, find_records
+
+# Imports the function to generate cryptographic keys
 from utils.crypto import generate_and_store_keys
-from models.database import initialize_database
-# Import paths from the config file
-from config import ACL_DIR, CONFIG_DIR, DATA_DIR, KEYS_DIR, MODELS_DIR, CORE_DIR, UTILS_DIR
-# Import the ACL components for the demo
-from acl.permissions import has_access
+
+# Imports the User data structure
 from core.models import User
+
+# This import is now correctly used by initialize_environment
+from config import (
+    ACL_DIR, CONFIG_DIR, DATA_DIR, KEYS_DIR, 
+    MODELS_DIR, CORE_DIR, UTILS_DIR
+)
+
 
 def initialize_environment():
     """
     Ensures all necessary directories exist and runs all setup functions.
-    This is now a high-level coordinator function.
+    This is a high-level coordinator function for application startup.
     """
     print("--- Initializing Environment ---")
 
-    # 1. Ensure all directories exist
+    # 1. Ensure all directories exist using the imported config paths.
+    # This is the corrected version that uses our single source of truth (config.py).
     for dir_path in [ACL_DIR, CONFIG_DIR, DATA_DIR, KEYS_DIR, MODELS_DIR, CORE_DIR, UTILS_DIR]:
         dir_path.mkdir(exist_ok=True)
     
-    # Secure the keys directory
+    # 2. Secure the keys directory
     if os.name != 'nt':
         os.chmod(KEYS_DIR, 0o700)
 
-    # 2. Run initial setup functions from other modules
+    # 3. Run initial setup functions from other modules
     generate_and_store_keys()
     initialize_database()
 
     print("\n--- Environment check complete ---")
 
 
+def setup_demo_data():
+    """Inserts sample meetings into the database for the demo."""
+    meetings = [
+        (20, 'nyc', 'ny', 'Meeting A in NYC'),
+        (21, 'nyc', 'ny', 'Meeting B in NYC'),
+        (40, 'albany', 'ny', 'Meeting C in Albany'),
+        (41, 'sf', 'ca', 'Meeting D in SF')
+    ]
+    conn = get_db_connection()
+    # Clear existing meetings to make the demo repeatable
+    conn.execute("DELETE FROM meetings")
+    conn.executemany("INSERT INTO meetings (host_id, city, state, title) VALUES (?, ?, ?, ?)", meetings)
+    conn.commit()
+    conn.close()
+    print("Demo data has been set up.")
+
+
 def run_app():
     """
-    The main application logic. Now demonstrates the ACL.
+    The main application logic. 
+    Currently, it demonstrates fetching data with dynamic, role-based ACL filters.
     """
     print("\nWelcome to the Spanning Tree of Life Organizer System!")
-    
-    # --- DEMO: Test the Access Control Layer ---
-    print("\n--- Running ACL Demo ---")
+    setup_demo_data()
 
-    # 1. Create sample users with different roles
-    shadower_user = User(id=10, role='shadower', region='nyc')
-    facilitator_user = User(id=20, role='facilitator', region='nyc')
-    municipal_user = User(id=30, role='municipal', region='nyc')
-    statal_user = User(id=40, role='statal', region='ny')
+    # Create sample users for the demo
+    facilitator_nyc = User(id=20, role='facilitator', region='nyc')
+    municipal_nyc = User(id=30, role='municipal', region='nyc')
+    statal_ny = User(id=40, role='statal', region='ny')
     national_user = User(id=50, role='national', region=None)
-    other_user = User(id=99, role='shadower', region='sf') # A user from another city
 
-    # 2. Create sample data records
-    record_invited_by_shadower = {'invited_by': 10, 'city': 'nyc', 'state': 'ny'}
-    record_hosted_by_facilitator = {'host_id': 20, 'city': 'nyc', 'state': 'ny'}
-    record_in_nyc = {'city': 'nyc', 'state': 'ny'}
-    record_in_albany = {'city': 'albany', 'state': 'ny'}
-    record_in_sf = {'city': 'sf', 'state': 'ca'}
+    # --- Run ACL-filtered Queries ---
+    
+    # Facilitator in NYC should only see meetings they host (id=20)
+    facilitator_meetings = find_records('meetings', facilitator_nyc)
+    print("Results:", [m['title'] for m in facilitator_meetings])
 
-    # 3. Run tests and print results
-    print(f"Shadower accessing their own invite: {has_access(shadower_user, record_invited_by_shadower)}")
-    print(f"Shadower accessing another record in their city: {has_access(shadower_user, record_in_nyc)}")
+    # Municipal user in NYC should see all meetings in their city
+    municipal_meetings = find_records('meetings', municipal_nyc)
+    print("Results:", [m['title'] for m in municipal_meetings])
     
-    print(f"\nFacilitator accessing their hosted meeting: {has_access(facilitator_user, record_hosted_by_facilitator)}")
+    # Statal user for NY should see all meetings in their state
+    statal_meetings = find_records('meetings', statal_ny)
+    print("Results:", sorted([m['title'] for m in statal_meetings]))
     
-    print(f"\nMunicipal user accessing a record in their city: {has_access(municipal_user, record_in_nyc)}")
-    print(f"Municipal user accessing a record in another city: {has_access(municipal_user, record_in_albany)}")
-    
-    print(f"\nStatal user accessing a record in their state (Albany): {has_access(statal_user, record_in_albany)}")
-    print(f"Statal user accessing a record in another state (SF): {has_access(statal_user, record_in_sf)}")
-    
-    print(f"\nNational user accessing a random record: {has_access(national_user, record_in_sf)}")
+    # National user should see all meetings
+    national_meetings = find_records('meetings', national_user)
+    print("Results:", sorted([m['title'] for m in national_meetings]))
 
 
-# This is the main execution block that runs when you execute the script.
-# The previous snippet was missing the call to run_app().
+# This is the main execution block that runs when you execute `python main.py`
 if __name__ == "__main__":
     initialize_environment()
     run_app()
