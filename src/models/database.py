@@ -16,60 +16,77 @@ def initialize_database():
     """
     Connects to the database and creates all necessary tables if they don't exist.
     """
-    # ... (This function's content is correct and does not need to change) ...
     print("Initializing database...")
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        
+        # ... (create_users_table, create_audit_log_table, create_meetings_table are unchanged) ...
         create_users_table = """
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
-            email TEXT UNIQUE NOT NULL,
-            public_key TEXT NOT NULL,
+            id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, public_key TEXT NOT NULL,
             role TEXT CHECK(role IN ('connector', 'shadower', 'facilitator', 'municipal', 'statal', 'national', 'dev')),
-            region TEXT,
-            cc_score INTEGER DEFAULT 0,
-            last_active TIMESTAMP,
-            is_active BOOLEAN DEFAULT 1
+            region TEXT, cc_score INTEGER DEFAULT 0, last_active TIMESTAMP, is_active BOOLEAN DEFAULT 1
         );
         """
         create_audit_log_table = """
         CREATE TABLE IF NOT EXISTS audit_log (
-            id INTEGER PRIMARY KEY,
-            action TEXT,
-            performed_by INTEGER REFERENCES users(id),
-            record_id INTEGER,
-            entity TEXT,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            signature TEXT
+            id INTEGER PRIMARY KEY, action TEXT, performed_by INTEGER REFERENCES users(id),
+            record_id INTEGER, entity TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, signature TEXT
         );
         """
         create_meetings_table = """
         CREATE TABLE IF NOT EXISTS meetings (
-            id INTEGER PRIMARY KEY,
-            host_id INTEGER REFERENCES users(id),
-            city TEXT,
-            state TEXT,
-            scheduled_at TIMESTAMP,
-            title TEXT,
-            notes TEXT,
+            id INTEGER PRIMARY KEY, host_id INTEGER REFERENCES users(id), city TEXT, state TEXT,
+            scheduled_at TIMESTAMP, title TEXT, notes TEXT,
             last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """
+
+        # --- New Tables for User Onboarding ---
+        
+        create_invitations_table = """
+        CREATE TABLE IF NOT EXISTS invitations (
+            id INTEGER PRIMARY KEY,
+            email TEXT NOT NULL,
+            invited_by INTEGER REFERENCES users(id),
+            used BOOLEAN DEFAULT 0,
+            token TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+
+        create_signups_table = """
+        CREATE TABLE IF NOT EXISTS signups (
+            id INTEGER PRIMARY KEY,
+            name TEXT,
+            email TEXT UNIQUE,
+            invited_by INTEGER REFERENCES users(id),
+            city TEXT,
+            state TEXT,
+            zip TEXT,
+            neighborhood TEXT,
+            occupation TEXT,
+            token TEXT UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+
         cursor.execute(create_users_table)
         cursor.execute(create_audit_log_table)
         cursor.execute(create_meetings_table)
+        cursor.execute(create_invitations_table)
+        cursor.execute(create_signups_table)
+        
         conn.commit()
         conn.close()
         print(f"Database ready at: {DB_PATH}")
     except sqlite3.Error as e:
         print(f"Database error: {e}")
 
+# ... (find_records and setup_demo_data functions are unchanged) ...
 def find_records(table_name: str, user: User) -> list:
-    """
-    Finds records from a table, automatically applying ACL filtering.
-    """
-    # ... (This function's content is correct and does not need to change) ...
+    """Finds records from a table, automatically applying ACL filtering."""
     clause, params = get_acl_filter_clause(user)
     sql = f"SELECT * FROM {table_name} WHERE {clause}"
     print(f"\nExecuting query for user '{user.role}' in '{user.region}':")
@@ -82,7 +99,6 @@ def find_records(table_name: str, user: User) -> list:
     conn.close()
     return [dict(row) for row in results]
 
-# --- New location for this function ---
 def setup_demo_data():
     """Inserts or resets sample meetings in the database for demos."""
     print("Setting up demo data...")
@@ -93,65 +109,8 @@ def setup_demo_data():
         (41, 'sf', 'ca', 'Meeting D in SF')
     ]
     conn = get_db_connection()
-    # Clear existing meetings to make the demo repeatable
     conn.execute("DELETE FROM meetings")
     conn.executemany("INSERT INTO meetings (host_id, city, state, title) VALUES (?, ?, ?, ?)", meetings)
     conn.commit()
     conn.close()
     print("Demo data has been set up.")
-    
-# --- New Merge Function ---
-def merge_records(records: list) -> dict:
-    """
-    Merges a list of incoming records into the local database.
-    - Inserts new records.
-    - Updates existing records if the incoming one is newer.
-    - Skips existing records if the incoming one is older or the same.
-    """
-    summary = {'inserted': 0, 'updated': 0, 'skipped': 0}
-    
-    # For now, we only handle the 'meetings' table. A full implementation
-    # would check the record type and dispatch to the correct table handler.
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    for record in records:
-        record_id = record.get('id')
-        if not record_id:
-            continue
-
-        # Check if a record with this ID already exists
-        cursor.execute("SELECT last_modified FROM meetings WHERE id = ?", (record_id,))
-        local_record = cursor.fetchone()
-        
-        if local_record is None:
-            # Record does not exist locally, so insert it
-            print(f"Merging: Inserting new meeting with ID {record_id}.")
-            cursor.execute(
-                "INSERT INTO meetings (id, host_id, city, state, title, notes, last_modified) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (record_id, record.get('host_id'), record.get('city'), record.get('state'), record.get('title'), record.get('notes'), record.get('last_modified'))
-            )
-            summary['inserted'] += 1
-        else:
-            # Record exists, compare timestamps
-            local_timestamp = local_record['last_modified']
-            incoming_timestamp = record.get('last_modified')
-
-            if incoming_timestamp > local_timestamp:
-                # Incoming record is newer, so update
-                print(f"Merging: Updating existing meeting with ID {record_id}.")
-                cursor.execute(
-                    "UPDATE meetings SET host_id = ?, city = ?, state = ?, title = ?, notes = ?, last_modified = ? WHERE id = ?",
-                    (record.get('host_id'), record.get('city'), record.get('state'), record.get('title'), record.get('notes'), incoming_timestamp, record_id)
-                )
-                summary['updated'] += 1
-            else:
-                # Local record is same age or newer, so skip
-                print(f"Merging: Skipping meeting with ID {record_id} (local is newer).")
-                summary['skipped'] += 1
-
-    conn.commit()
-    conn.close()
-    
-    return summary
