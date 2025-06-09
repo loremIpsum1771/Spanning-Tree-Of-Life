@@ -118,12 +118,11 @@ def initialize_database():
 
 def find_records(table_name: str, user: User) -> list:
     """
-    Finds records from a table, automatically applying ACL filtering by generating
-    a dynamic WHERE clause based on the user's role.
+    Finds records from a table, automatically applying ACL filtering.
     """
-    clause, params = get_acl_filter_clause(user)
+    # The table_name is now passed to the ACL function
+    clause, params = get_acl_filter_clause(user, table_name)
     
-    # Construct the final, safe, parameterized query
     sql = f"SELECT * FROM {table_name} WHERE {clause}"
     
     print(f"\nExecuting query for user '{user.role}' in '{user.region}':")
@@ -136,7 +135,6 @@ def find_records(table_name: str, user: User) -> list:
     results = cursor.fetchall()
     conn.close()
     
-    # Convert results from sqlite3.Row objects to a list of standard dictionaries
     return [dict(row) for row in results]
 
 
