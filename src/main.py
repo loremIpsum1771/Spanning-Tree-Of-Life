@@ -5,13 +5,13 @@ import threading
 from models.database import initialize_database
 from utils.crypto import generate_and_store_keys
 from core.models import User
-from core.invites import InvitationManager # Import the new manager
+from core.meetings import MeetingScheduler # Import our new scheduler
 
 def initialize_environment():
     """Ensures all necessary directories exist and runs all setup functions."""
     print("--- Initializing Environment ---")
-    # ... (No changes here, but you must delete your old .db file) ...
-    # ...
+    # ... (This function's content is correct and does not need to change) ...
+    # You do not need to delete your database for this step.
     generate_and_store_keys()
     initialize_database()
     print("\n--- Environment check complete ---")
@@ -19,32 +19,42 @@ def initialize_environment():
 
 def run_app():
     """
-    Demonstrates the invitation token generation and redemption workflow.
+    Demonstrates the Meeting Scheduling feature, including permission checks.
     """
     print("\nWelcome to the Spanning Tree of Life Organizer System!")
     
-    # --- DEMO: Invitation Workflow ---
-    print("\n--- Running Invitation Demo ---")
+    # --- DEMO: Meeting Scheduling Workflow ---
+    print("\n--- Running Meeting Scheduling Demo ---")
 
     # 1. Setup
-    invitation_manager = InvitationManager()
-    # Let's pretend our current user (ID=20, a facilitator) is inviting someone
-    inviter_user = User(id=20, role='facilitator', region='nyc')
-    invitee_email = "new.participant@example.com"
+    scheduler = MeetingScheduler()
     
-    # 2. Generate an invite
-    new_token = invitation_manager.generate_invite(inviter_user, invitee_email)
+    # Create two sample users: one with permission, one without
+    facilitator_user = User(id=20, role='facilitator', region='nyc')
+    shadower_user = User(id=10, role='shadower', region='nyc')
 
-    if new_token:
-        # 3. Simulate the new participant signing up with the correct token
-        print("\n--- Simulating successful redemption ---")
-        invitation_manager.redeem_invite(new_token, invitee_email)
+    # 2. Facilitator (Success Case)
+    # This user has permission and the meeting should be created.
+    scheduler.schedule_meeting(
+        host=facilitator_user,
+        title="Weekly Planning Session",
+        notes="Discuss upcoming events and goals.",
+        city="nyc",
+        state="ny"
+    )
 
-        # 4. Simulate someone trying to use the same token again
-        print("\n--- Simulating a repeat redemption attempt ---")
-        invitation_manager.redeem_invite(new_token, invitee_email)
+    # 3. Shadower (Failure Case)
+    # This user does not have permission, so the action should be denied.
+    scheduler.schedule_meeting(
+        host=shadower_user,
+        title="Unauthorized Meeting",
+        notes="This should not be created.",
+        city="nyc",
+        state="ny"
+    )
 
     print("\n--- Demo Complete. Application is idle. ---")
+    print("To verify, check the 'meetings' and 'audit_log' tables in your database.")
     print("Press Ctrl+C to exit.")
     
     try:
