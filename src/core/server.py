@@ -1,11 +1,12 @@
 import json
 import logging
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect
 from nacl.public import PrivateKey, Box
 from nacl.signing import SigningKey, VerifyKey
 from nacl.exceptions import BadSignatureError, CryptoError
 
 from models.database import merge_records
+from core.cta import CtaManager # Import the new manager
 from config import PRIVATE_KEY_PATH, PUBLIC_KEY_PATH
 
 log = logging.getLogger('werkzeug')
@@ -73,6 +74,18 @@ def sync():
         "summary": merge_summary
     }), 200
 
+# --- New Endpoint for CTA Tracking ---
+@app.route('/cta/<token>', methods=['GET'])
+def track_cta_click(token: str):
+    """
+    This endpoint is hit when a user clicks a CTA link in an email.
+    It logs the click and then redirects the user to the original destination.
+    """
+    cta_manager.track_click(token)
+    # For a real user experience, you could fetch the original cta_link
+    # from the database and redirect them. For now, we show a simple message.
+    return "Thank you for your response! Your click has been recorded."
+    
 def run_server():
     """
     Runs the Flask server on a local-only address.
